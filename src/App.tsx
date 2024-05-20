@@ -1,160 +1,216 @@
-import { Button, Modal, Form, Input, Checkbox, message, Switch } from "antd";
+import {
+  Button,
+  Form,
+  message,
+  Switch,
+  Layout,
+  Input,
+  Row,
+  Col,
+  Divider,
+  Table,
+} from "antd";
 import { useEffect, useState } from "react";
-import { IToDo, IToDoRequest } from "./interfaces/todo";
-import { createToDo } from "./requests/createToDo";
+import {
+  CheckOutlined,
+  CloseOutlined,
+  DeleteOutlined,
+  EditOutlined,
+} from "@ant-design/icons";
+import moment from "moment";
+
+import { IToDo, IToDoTable } from "./interfaces/todo";
 import { loadToDo } from "./requests/loadToDo";
-import { updateToDo } from "./requests/updateToDo";
 import { deleteToDo } from "./requests/deleteToDo";
+import { Content, Footer, Header } from "antd/es/layout/layout";
+import { createToDo } from "./requests/createToDo";
+import { ModalEditToDo } from "./components/Modal";
+import { updateStatusToDo } from "./requests/updateStatusToDo";
 
 const App = () => {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [form] = Form.useForm();
-  const [checkDone, setCheckDone] = useState(false);
-
   const [toDos, setToDos] = useState<IToDo[]>([]);
-
+  const [toDosDataSource, setToDosDataSource] = useState<IToDoTable[]>([]);
+  const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
+  const [checkDone, setCheckDone] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedToDo, setSelectedToDo] = useState<IToDo>();
 
-  const showModal = () => {
-    setIsModalOpen(true);
+  const success = () => {
+    messageApi.open({
+      type: "success",
+      content: "This is a success message",
+    });
   };
 
-  const handleOk = () => {
-    setIsModalOpen(false);
-  };
-
-  const handleCancel = () => {
-    setIsModalOpen(false);
+  const errorToast = () => {
+    messageApi.open({
+      type: "error",
+      content: "This is an error message",
+    });
   };
 
   const fetchData = async () => {
     try {
       const todos = await loadToDo();
       setToDos(todos);
-    } catch (error) {
-      messageApi.open({
-        type: "error",
-        content: "Houve um problema",
-      });
-    }
-  };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const handleChangeStatus = async (toDo: IToDo) => {
-    try {
-      await updateToDo(toDo);
-      fetchData();
-    } catch (error) {
-      messageApi.open({
-        type: "error",
-        content: "Houve um problema",
+      const todosWithKeys = todos.map((toDo, index) => {
+        return { ...toDo, key: index.toString() }; // Adicionando uma chave única para cada linha
       });
+      setToDosDataSource(todosWithKeys);
+    } catch (error) {
+      errorToast();
     }
   };
 
   const deleteToDoTask = async (id: number) => {
     try {
       await deleteToDo(id);
+      fetchData();
+      success();
     } catch (error) {
-      messageApi.open({
-        type: "error",
-        content: "Houve um problema",
-      });
+      errorToast();
     }
   };
 
   const onFinish = async () => {
     try {
-      const newToDo = await createToDo(form.getFieldsValue());
-      console.log(newToDo);
-      messageApi.open({
-        type: "success",
-        content: "Tarefa criada com sucesso",
-      });
+      form.setFieldValue("done", checkDone);
+      await createToDo(form.getFieldsValue());
+      fetchData();
+      form.resetFields();
+      success();
     } catch (error) {
-      messageApi.open({
-        type: "error",
-        content: "Houve um problema",
-      });
+      errorToast();
     }
-
-    form.setFieldValue("done", checkDone);
-    console.log(form.getFieldsValue());
   };
 
+  const updateStatus = async (id: number, done: boolean) => {
+    try {
+      await updateStatusToDo(id, done);
+      success();
+    } catch (error) {
+      errorToast();
+    }
+  };
+
+  const openModal = (todo: IToDo) => {
+    setSelectedToDo(todo);
+    setIsModalOpen(true);
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [toDos]);
+
+  const columns = [
+    {
+      title: "Atividade",
+      dataIndex: "nome",
+      key: "nome",
+    },
+    {
+      title: "Data",
+      dataIndex: "createdAt",
+      key: "createdAt",
+      render: (date: string) => moment(date).format("L"),
+    },
+    {
+      title: "Concluída",
+      dataIndex: "done",
+      key: "done",
+      render: (done: boolean, todo: IToDoTable) => {
+        return (
+          <Switch
+            defaultChecked={!!todo.done}
+            onChange={(check) => {
+              updateStatus(todo.id, check);
+            }}
+          />
+        );
+      },
+    },
+    {
+      title: "Editar",
+      key: "edit",
+      render: (todo: IToDo) => (
+        <Button onClick={() => openModal(todo)}>
+          <EditOutlined />
+        </Button>
+      ),
+    },
+    {
+      title: "Apagar",
+      key: "delete",
+      render: (todo: IToDo) => (
+        <Button danger onClick={() => deleteToDoTask(todo.id)}>
+          <DeleteOutlined />
+        </Button>
+      ),
+    },
+  ];
+
   return (
-    <div>
+    <Layout style={{ minHeight: "100vh" }}>
       {contextHolder}
-      <Button type="primary" onClick={showModal}>
-        Adicionar Tarefa
-      </Button>
-      <Modal
-        title="Basic Modal"
-        open={isModalOpen}
-        onOk={handleOk}
-        onCancel={handleCancel}
-        footer={
-          <Button
-            onClick={() => form.submit()}
-            type="primary"
-            htmlType="submit"
-          >
-            Criar tarefa
-          </Button>
-        }
-      >
+      <Header style={{ display: "flex", alignItems: "center", color: "white" }}>
+        ToDo
+      </Header>
+      <Content style={{ padding: "0 48px" }}>
+        <ModalEditToDo
+          toDo={selectedToDo}
+          isModalOpen={isModalOpen}
+          setIsModalOpen={setIsModalOpen}
+        />
         <Form
-          name="basic"
-          labelCol={{ span: 8 }}
-          wrapperCol={{ span: 16 }}
-          style={{ maxWidth: 600 }}
-          onFinish={onFinish}
-          autoComplete="off"
+          layout="vertical"
           form={form}
+          onFinish={onFinish}
+          style={{ paddingTop: "20px" }}
         >
-          <Form.Item
-            label="Atividade"
-            name="nome"
-            rules={[
-              {
-                required: true,
-                message: "Por favor, insira o titulo da atividade",
-              },
-            ]}
-          >
-            <Input />
-          </Form.Item>
-
-          <Form.Item
-            name="done"
-            valuePropName="done"
-            wrapperCol={{ offset: 8, span: 16 }}
-          >
-            <Checkbox onClick={() => setCheckDone(!checkDone)}>Feito!</Checkbox>
-          </Form.Item>
+          <Row style={{ display: "flex", justifyContent: "space-between" }}>
+            <Col span={20}>
+              <Form.Item
+                wrapperCol={{ span: 24 }}
+                label="Nova tarefa"
+                name="nome"
+                rules={[
+                  {
+                    required: true,
+                    message: "Por favor, insira o titulo da tarefa",
+                  },
+                ]}
+              >
+                <Input placeholder="O que vamos fazer hoje?" />
+              </Form.Item>
+            </Col>
+            <Col span={3}>
+              <Form.Item
+                label="Tarefa já feita"
+                name="done"
+                valuePropName="done"
+              >
+                <Switch
+                  checked={checkDone}
+                  checkedChildren={<CheckOutlined />}
+                  unCheckedChildren={<CloseOutlined />}
+                  onClick={() => setCheckDone(!checkDone)}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Button type="primary" onClick={() => form.submit()}>
+            Adicionar Tarefa
+          </Button>
         </Form>
-      </Modal>
-
-      {toDos ? (
-        toDos.map((todo, id) => (
-          <div key={id} className="grid grid-cols-2">
-            <div>{todo.nome}</div>
-            <Switch
-              checked={todo.done}
-              onClick={() => handleChangeStatus(todo)}
-            />
-            <Button onClick={() => deleteToDoTask(todo.id)}>
-              Apagar Tarefa
-            </Button>
-          </div>
-        ))
-      ) : (
-        <p>Ainda não há tarefas aqui!</p>
-      )}
-    </div>
+        <Divider />
+        <Table dataSource={toDosDataSource} columns={columns} />
+      </Content>
+      <Footer style={{ textAlign: "center" }}>
+        Cindy ©{new Date().getFullYear()}
+      </Footer>
+    </Layout>
   );
 };
 
